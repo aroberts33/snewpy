@@ -848,6 +848,29 @@ class Fornax_2022(Fornax_2021):
             Source distance in cm (default is 10 kpc).
         """
 
+        # Read data from the text file, assuming there is space/tab separation
+        # Each row corresponds to [time, hp_nu0, hp_nu1, hp_nu2, hx_nu0, hx_nu1, hx_nu2]
+        data = np.loadtxt(filename)
+
+        # Extract the time and strain values from the datafile
+        self.time = data[:, 0] * u.s # time in seconds
+        hp_values = data[:, 1:4] # hp strain values for nu0, nu1, nu2
+        hx_values = data[:, 4:7] # hx strain values for nu0, nu1, nu2
+
+        # Normalize by dividing these strains by source distance
+        self.hp_strain = hp_values / distance
+        self.hx_strain = hx_values / distance
+
+        # Option to store strain values in Dictionary
+        self.strain = {
+            Flavor.NU_E: self.hp_strain[:, 0],   # nu0 hp strain
+            Flavor.NU_E_BAR: self.hp_strain[:, 1],  # nu1 hp strain
+            Flavor.NU_X: self.hp_strain[:, 2],  # nu2 hp strain
+            Flavor.NU_X_BAR: self.hx_strain[:, 2],  # nu2 hx strain (considered as a placeholder for both nu_x and nu_x_bar)
+        }
+
+
+
 
         ## WORK IN PROGRESS
 
