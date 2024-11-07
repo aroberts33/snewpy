@@ -768,23 +768,107 @@ class Fornax_2021(SupernovaModel):
         return initialspectra
 
 
+# class Fornax_2022(Fornax_2021):
+#     def __init__(self, filename, metadata={}):
+#         """
+#         Parameters
+#         ----------
+#         filename : str
+#             Absolute or relative path to HDF5 file with model data.
+#         """
+#         # Open the requested filename using the model downloader.
+#         datafile = self.request_file(filename)
+#         # Set up model metadata.
+#         self.progenitor = os.path.splitext(os.path.basename(filename))[0].split('_')[2]
+#         self.progenitor_mass = float(self.progenitor[:-3])*u.Msun if self.progenitor.endswith('bh') else float(self.progenitor)*u.Msun
+#
+#         self.metadata = metadata
+#
+#         # Open HDF5 data file.
+#         _h5file = h5py.File(datafile, 'r')
+#
+#         self.metadata['PNS mass'] = _h5file.attrs['Mpns'] * u.Msun
+#         self.time = _h5file['nu0'].attrs['time'] * u.s
+#
+#         self.luminosity = {}
+#         self._E = {}
+#         self._dLdE = {}
+#         for flavor in Flavor:
+#             # Convert flavor to key name in the model HDF5 file
+#             key = {Flavor.NU_E: 'nu0',
+#                    Flavor.NU_E_BAR: 'nu1',
+#                    Flavor.NU_X: 'nu2',
+#                    Flavor.NU_X_BAR: 'nu2'}[flavor]
+#
+#             self._E[flavor] = np.asarray(_h5file[key]['egroup'])
+#             self._dLdE[flavor] = {f"g{i}": np.asarray(_h5file[key][f'g{i}']) for i in range(12)}
+#
+#             # Compute luminosity by integrating over model energy bins.
+#             dE = np.asarray(_h5file[key]['degroup'])
+#             n = len(dE[0])
+#             dLdE = np.zeros((len(self.time), n), dtype=float)
+#             for i in range(n):
+#                 dLdE[:, i] = self._dLdE[flavor][f"g{i}"]
+#
+#             # Note factor of 0.25 in nu_x and nu_x_bar.
+#             factor = 1. if flavor.is_electron else 0.25
+#             self.luminosity[flavor] = np.sum(dLdE*dE, axis=1) * factor * 1e50 * u.erg/u.s
+
 class Fornax_2022(Fornax_2021):
     def __init__(self, filename, metadata={}):
         """
         Parameters
         ----------
         filename : str
-            Absolute or relative path to HDF5 file with model data.
+            Absolute or relative path to model data file (.txt or .h5).
+        metadata : dict
+            Additional metadata for the model.
         """
-        # Open the requested filename using the model downloader.
-        datafile = self.request_file(filename)
-        # Set up model metadata.
-        self.progenitor = os.path.splitext(os.path.basename(filename))[0].split('_')[2]
-        self.progenitor_mass = float(self.progenitor[:-3])*u.Msun if self.progenitor.endswith('bh') else float(self.progenitor)*u.Msun
+        # determine file type (.txt or .h5)
+        file_extension = os.path.splitext(filename)[-1]
+
+        if file_extension == '.txt':
+            # for .txt files, use the new data loading method
+            self.load_txt_data(filename)
+        elif file_extension == '.h5':
+            # for HDF5 files, use the original Fornax loading mechanism
+            self.load_hdf5_data(filename)
 
         self.metadata = metadata
 
-        # Open HDF5 data file.
+    def load_txt_data(self, filename, distance=3.086e22):
+        """
+        Load data from a .txt file format with time and strain values.
+
+        Parameters
+        ----------
+        filename : str
+            Path to the .txt file with model data.
+        distance : float
+            Source distance in cm (default is 10 kpc).
+        """
+
+
+        ## WORK IN PROGRESS
+
+    def load_hdf5_data(self, filename):
+        """
+        Load data from an HDF5 file (original Fornax data format).
+
+        Parameters
+        ----------
+        filename : str
+            Path to the HDF5 file with model data.
+        """
+        ## COPIED FROM ABOVE
+        # open the requested filename using the model downloader.
+        datafile = self.request_file(filename)
+
+        # set up model metadata
+        self.progenitor = os.path.splitext(os.path.basename(filename))[0].split('_')[2]
+        self.progenitor_mass = float(self.progenitor[:-3])*u.Msun if self.progenitor.endswith('bh') else float(self.progenitor)*u.Msun
+
+        # open HDF5 data file
         _h5file = h5py.File(datafile, 'r')
 
         self.metadata['PNS mass'] = _h5file.attrs['Mpns'] * u.Msun
@@ -794,7 +878,7 @@ class Fornax_2022(Fornax_2021):
         self._E = {}
         self._dLdE = {}
         for flavor in Flavor:
-            # Convert flavor to key name in the model HDF5 file
+            # convert flavor to key name in the model HDF5 file
             key = {Flavor.NU_E: 'nu0',
                    Flavor.NU_E_BAR: 'nu1',
                    Flavor.NU_X: 'nu2',
@@ -803,16 +887,42 @@ class Fornax_2022(Fornax_2021):
             self._E[flavor] = np.asarray(_h5file[key]['egroup'])
             self._dLdE[flavor] = {f"g{i}": np.asarray(_h5file[key][f'g{i}']) for i in range(12)}
 
-            # Compute luminosity by integrating over model energy bins.
+            # compute luminosity by integrating over model energy bins
             dE = np.asarray(_h5file[key]['degroup'])
             n = len(dE[0])
             dLdE = np.zeros((len(self.time), n), dtype=float)
             for i in range(n):
                 dLdE[:, i] = self._dLdE[flavor][f"g{i}"]
 
-            # Note factor of 0.25 in nu_x and nu_x_bar.
+            # note factor of 0.25 in nu_x and nu_x_bar
             factor = 1. if flavor.is_electron else 0.25
             self.luminosity[flavor] = np.sum(dLdE*dE, axis=1) * factor * 1e50 * u.erg/u.s
+
+    def get_strain(self, polarization='hp', neutrino_type='nu0'):
+        """
+        Retrieve strain values (hp or hx) for the specified neutrino type.
+
+        Parameters
+        ----------
+        polarization : str
+            Either 'hp' or 'hx' (gravitational wave polarization).
+        neutrino_type : str
+            One of 'nu0', 'nu1', or 'nu2' (neutrino species).
+
+        Returns
+        -------
+        ndarray : Strain values for the given polarization and neutrino type.
+        """
+        # Conversion of flavor to key name in the model HDF5 file.
+        # self._flavorkeys = {Flavor.NU_E: 'nu0',
+        #                     Flavor.NU_E_BAR: 'nu1',
+        #                     Flavor.NU_X: 'nu2',
+        #                     Flavor.NU_X_BAR: 'nu2'}
+
+        ## WORK IN PROGRESS
+        ## NEED TO ACCOUNT FOR STRAIN
+
+
 
 
 class Mori_2023(PinchedModel):
