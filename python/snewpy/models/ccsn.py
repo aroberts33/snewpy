@@ -390,31 +390,51 @@ class Fornax_2021(loaders.Fornax_2021):
             filename = f'lum_spec_{progenitor_mass.value:.2f}M_r10000_dat.h5'
         return super().__init__(filename, self.metadata)
 
+################################
 
-_fornax_2022_progenitors = [  '9.0',     '9.25',     '9.5',      '9.75',     '10.0',
-                  '10.25',    '10.5',     '10.75',    '11.0',     '11.25',
-                  '11.5',     '11.75',    '12.00.bh', '12.03.bh', '12.07.bh',
-                  '12.1.bh',  '12.13',    '12.15',    '12.18.bh', '12.20.bh',
-                  '12.25',    '12.33.bh', '12.40.bh', '12.45.bh', '12.50.bh',
-                  '12.54.bh', '12.60.bh', '12.63',    '12.70',    '12.72.bh',
-                  '12.75',    '12.80.bh', '12.85.bh', '12.90.bh', '12.93',
-                  '12.97.bh', '13.00.bh', '13.05.bh', '13.11',    '13.25.bh',
-                  '13.27.bh', '13.32.bh', '13.40.bh', '13.45',    '13.50.bh',
-                  '13.60.bh', '13.75',    '13.82.bh', '13.90.bh', '13.96',
-                  '14.01',    '14.13.bh', '14.25.bh', '14.40.bh', '14.41.bh',
-                  '14.43',    '14.44.bh', '14.70.bh', '14.87.bh', '15.00.bh',
-                  '15.01',    '15.04.bh', '15.05',    '15.38.bh', '16.43',
-                  '16.65',    '16.99',    '17.00',    '17.07',    '17.10',
-                  '17.40',    '17.48',    '17.50',    '17.51',    '17.83',
-                  '18.04',    '18.05',    '18.09',    '18.10',    '18.50',
-                  '19.02',    '19.56',    '19.83',    '19.99',    '20.08',
-                  '20.09',    '20.18',    '20.37',    '21.00',    '21.68',
-                  '22.00',    '22.30',    '22.82',    '23.00',    '23.04',
-                  '23.43',    '24.00',    '25.00',    '26.00',    '26.99']
+# _fornax_2022_progenitors = [  '9.0',     '9.25',     '9.5',      '9.75',     '10.0',
+#                   '10.25',    '10.5',     '10.75',    '11.0',     '11.25',
+#                   '11.5',     '11.75',    '12.00.bh', '12.03.bh', '12.07.bh',
+#                   '12.1.bh',  '12.13',    '12.15',    '12.18.bh', '12.20.bh',
+#                   '12.25',    '12.33.bh', '12.40.bh', '12.45.bh', '12.50.bh',
+#                   '12.54.bh', '12.60.bh', '12.63',    '12.70',    '12.72.bh',
+#                   '12.75',    '12.80.bh', '12.85.bh', '12.90.bh', '12.93',
+#                   '12.97.bh', '13.00.bh', '13.05.bh', '13.11',    '13.25.bh',
+#                   '13.27.bh', '13.32.bh', '13.40.bh', '13.45',    '13.50.bh',
+#                   '13.60.bh', '13.75',    '13.82.bh', '13.90.bh', '13.96',
+#                   '14.01',    '14.13.bh', '14.25.bh', '14.40.bh', '14.41.bh',
+#                   '14.43',    '14.44.bh', '14.70.bh', '14.87.bh', '15.00.bh',
+#                   '15.01',    '15.04.bh', '15.05',    '15.38.bh', '16.43',
+#                   '16.65',    '16.99',    '17.00',    '17.07',    '17.10',
+#                   '17.40',    '17.48',    '17.50',    '17.51',    '17.83',
+#                   '18.04',    '18.05',    '18.09',    '18.10',    '18.50',
+#                   '19.02',    '19.56',    '19.83',    '19.99',    '20.08',
+#                   '20.09',    '20.18',    '20.37',    '21.00',    '21.68',
+#                   '22.00',    '22.30',    '22.82',    '23.00',    '23.04',
+#                   '23.43',    '24.00',    '25.00',    '26.00',    '26.99']
 
-_fornax_2022_masses = [float(p.strip('.bh')) for p in _fornax_2022_progenitors] << u.Msun
+_fornax_2022_progenitors = [
+    '9a', '9b', '9.25', '9.5', '11', '12.25', '14', '15.01', '16',
+    '17', '18', '18.5', '19', '19.56', '20', '21.68', '23', '24', '25', '40', '60'
+]
 
-@RegistryModel(progenitor_mass = _fornax_2022_masses )
+
+_fornax_2022_masses = []
+for progenitor in _fornax_2022_progenitors:
+    try:
+        # Strip any non-numeric characters and convert to float
+        mass = float(progenitor.rstrip('ab'))
+        _fornax_2022_masses.append(mass * u.Msun)
+    except ValueError:
+        # Handle cases like '9a' or '9b' as needed
+        pass
+
+
+
+
+# _fornax_2022_masses = [float(p.strip('.bh')) for p in _fornax_2022_progenitors] << u.Msun
+
+@RegistryModel(progenitor_mass = _fornax_2022_masses)
 class Fornax_2022(loaders.Fornax_2022):
     """Model based on 2D simulations of 100 progenitors from Tianshu Wang, David Vartanyan, Adam Burrows, and Matthew S.B. Coleman, MNRAS 517:543, 2022.
        Data available at https://www.astro.princeton.edu/~burrows/nu-emissions.2d.large/
@@ -422,11 +442,16 @@ class Fornax_2022(loaders.Fornax_2022):
     #a mapping of mass to the progenitor
     _mass_to_progenitor = dict(zip(_fornax_2022_masses,_fornax_2022_progenitors))
 
+
     def __init__(self, progenitor_mass:u.Quantity):
         progenitor = self._mass_to_progenitor[progenitor_mass]
         self.metadata['Black hole'] = progenitor.endswith('.bh')
-        filename = f'lum_spec_{progenitor}_dat.h5'
+        filename = f'/home/aroberts/snewpy/models/SNEWPY_models/nu_vartanyan_2023/{progenitor}_strain_nu_64_128.txt' # For use instead of .h5 files
+        # filename = f'lum_spec_{progenitor}_dat.h5'
         return super().__init__(filename, self.metadata)
+
+
+#######################
 
 
 @RegistryModel(

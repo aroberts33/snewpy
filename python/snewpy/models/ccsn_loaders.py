@@ -850,9 +850,10 @@ class Fornax_2022(Fornax_2021):
 
         # Read data from the text file, assuming there is space/tab separation
         # Each row corresponds to [time, hp_nu0, hp_nu1, hp_nu2, hx_nu0, hx_nu1, hx_nu2]
-        data = np.loadtxt(filename)
+        data = np.loadtxt(filename, skiprows=1)
 
         # Extract the time and strain values from the datafile
+
         self.time = data[:, 0] * u.s # time in seconds
         hp_values = data[:, 1:4] # hp strain values for nu0, nu1, nu2
         hx_values = data[:, 4:7] # hx strain values for nu0, nu1, nu2
@@ -936,11 +937,21 @@ class Fornax_2022(Fornax_2021):
         -------
         ndarray : Strain values for the given polarization and neutrino type.
         """
-        # Conversion of flavor to key name in the model HDF5 file.
-        # self._flavorkeys = {Flavor.NU_E: 'nu0',
-        #                     Flavor.NU_E_BAR: 'nu1',
-        #                     Flavor.NU_X: 'nu2',
-        #                     Flavor.NU_X_BAR: 'nu2'}
+        # Map neutrino type to the correct key in the strain dictionary
+        if polarization == 'hp':
+            if neutrino_type == 'nu0':
+                return self.strain[Flavor.NU_E]
+            elif neutrino_type == 'nu1':
+                return self.strain[Flavor.NU_E_BAR]
+            elif neutrino_type == 'nu2':
+                return self.strain[Flavor.NU_X]
+        elif polarization == 'hx':
+            if neutrino_type == 'nu0':
+                return self.hx_strain[:, 0]
+            elif neutrino_type == 'nu1':
+                return self.hx_strain[:, 1]
+            elif neutrino_type == 'nu2':
+                return self.hx_strain[:, 2]
 
         ## WORK IN PROGRESS
         ## NEED TO ACCOUNT FOR STRAIN
