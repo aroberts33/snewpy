@@ -44,6 +44,8 @@ from snewpy.models.registry_model import deprecated, legacy_filename_initializat
 from snewpy.models.registry_model import all_models
 from textwrap import dedent
 
+import re
+
 
 @RegistryModel()
 class Fischer_2020(loaders.Fischer_2020):
@@ -448,11 +450,36 @@ class Fornax_2022(loaders.Fornax_2022):
         self.metadata['Black hole'] = progenitor.endswith('.bh')
         filename = f'/home/aroberts/snewpy/models/SNEWPY_models/nu_vartanyan_2023/{progenitor}_strain_nu_64_128.txt' # For use instead of .h5 files
         # filename = f'lum_spec_{progenitor}_dat.h5'
+        base_filename = os.path.basename(filename) # Extract just '{progenitor}_strain...' from filename
+        progenitor_mass, variant = self.extract_progenitor_mass(base_filename)
+        if progenitor_mass not in self._mass_to_progenitor:
+    	       raise ValueError(f"Invalid progenitor mass: {progenitor_mass}")
+        # Call the parent class initializer with the filename
+        super().__init__(filename, self.metadata)
+
+        test_filename = "/home/aroberts/snewpy/models/SNEWPY_models/nu_vartanyan_2023/9.5_strain_nu_64_128.txt"
+        base_filename = os.path.basename(test_filename)
+        mass, variant = self.extract_progenitor_mass(base_filename)
+        print(f"Mass: {mass}, Variant: {variant}")
+
+
+
+    def extract_progenitor_mass(self, filename):
+        """Extract progenitor mass and optional variant from filename."""
+        match = re.search(r'(?<!\d)(\d+\.?\d*)([a-z]?)(?=\D|$)', filename)  # Match numbers and optional letters
+        if match:
+            mass = float(match.group(1)) * u.solMass  # Convert mass to astropy Quantity
+            variant = match.group(2) or None  # Optional: captures suffix like 'a', 'b', or None
+            return mass, variant
+        raise ValueError(f"Failed to extract progenitor mass and variant from filename: {filename}")
+
         return super().__init__(filename, self.metadata)
 
 
-#######################
 
+
+
+####################
 
 @RegistryModel(
                _param_validator = lambda p: \
