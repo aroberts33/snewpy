@@ -426,6 +426,7 @@ for progenitor in _fornax_2022_progenitors:
     try:
         # Strip any non-numeric characters and convert to float
         mass = float(progenitor.rstrip('ab'))
+        print(mass)
         _fornax_2022_masses.append(mass * u.Msun)
     except ValueError:
         # Handle cases like '9a' or '9b' as needed
@@ -442,6 +443,7 @@ class Fornax_2022(loaders.Fornax_2022):
        Data available at https://www.astro.princeton.edu/~burrows/nu-emissions.2d.large/
         """
     #a mapping of mass to the progenitor
+    print("We get this far in Fornax_2022")
     _mass_to_progenitor = dict(zip(_fornax_2022_masses,_fornax_2022_progenitors))
 
 

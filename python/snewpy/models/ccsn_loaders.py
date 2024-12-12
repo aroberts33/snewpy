@@ -954,8 +954,6 @@ class Fornax_2022(Fornax_2021):
                 return self.hx_strain[:, 2]
 
         ## WORK IN PROGRESS
-        ## NEED TO ACCOUNT FOR STRAIN
-
 
 
 

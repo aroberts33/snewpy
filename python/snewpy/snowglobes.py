@@ -69,6 +69,7 @@ def generate_time_series(model_path, model_type, transformation_type, d, output_
     str
         Path of NumPy archive file with neutrino fluence data.
     """
+    print(model_type)
     model_class = getattr(snewpy.models.ccsn, model_type)
 
     # Choose flavor transformation. Use dict to associate the transformation name with its class.
@@ -156,7 +157,7 @@ def generate_fluence(model_path, model_type, transformation_type, d, output_file
     #energy with 0.2 MeV binning
     energy   = np.arange(0, 101, 0.2) << u.MeV
     #energy bins similar to SNOwGLoBES
-    energy_t = (np.linspace(0, 100, 201)+0.25) << u.MeV 
+    energy_t = (np.linspace(0, 100, 201)+0.25) << u.MeV
     flux = snmodel.get_flux(t=snmodel.get_time(), E=energy,  distance=d, flavor_xform=flavor_transformation)
     fluence = flux.integrate('time', limits = times).integrate('energy', limits = energy_t)
     times = fluence.time
@@ -222,9 +223,9 @@ def simulate(SNOwGLoBESdir, tarball_path, detector_input="all", verbose=False, *
         for n_bin, t_bin in enumerate(tbins):
             data = {**{(chan,'unsmeared','weighted'): rate.array[0,n_bin,:]
                       for chan,rate in rates_unsmeared.items()},
-                    **{(chan,'smeared','weighted'): rate.array[0,n_bin,:] 
+                    **{(chan,'smeared','weighted'): rate.array[0,n_bin,:]
                       for chan,rate in rates_smeared.items()}}
-            
+
             df = pd.DataFrame(data, index = ebins)
             df.index.rename('E', inplace=True)
             df.columns.rename(['channel','is_smeared','is_weighted'], inplace=True)
@@ -233,7 +234,7 @@ def simulate(SNOwGLoBESdir, tarball_path, detector_input="all", verbose=False, *
                 result[det][f'{fname_base}_{n_bin:01d}'] = df
             else:
                 result[det][f'{fname_base}'] = df
-        
+
     # save result to file for re-use in collate()
     cache_file = f'{fname_base}.npy'
     logging.info(f'Saving simulation results to {cache_file}')
@@ -257,8 +258,8 @@ def get_channel_label(c):
 
     if c in mapp:
         return mapp[c]
-    else: 
-        return re_chan_label.sub(gen_label, c) 
+    else:
+        return re_chan_label.sub(gen_label, c)
 
 def collate(SNOwGLoBESdir, tarball_path, detector_input="", skip_plots=False, verbose=False, remove_generated_files=True, *, smearing=True):
     """Collates SNOwGLoBES output files and generates plots or returns a data table.
@@ -309,7 +310,7 @@ def collate(SNOwGLoBESdir, tarball_path, detector_input="", skip_plots=False, ve
         t = t.unstack(levels)
         t = t.reorder_levels(table.columns.names, axis=1)
         return t
-        
+
     def do_plot(table, params):
         #plotting the events from given table
         flux,det,weighted,smeared = params
@@ -324,10 +325,10 @@ def collate(SNOwGLoBESdir, tarball_path, detector_input="", skip_plots=False, ve
         plt.title(f'{flux} {det.capitalize()} {weighted.capitalize()} {smear_title} Events')
         if smeared=='smeared':
             plt.xlabel('Detected Energy (GeV)')
-            plt.ylabel('Events')  
+            plt.ylabel('Events')
         else:
             plt.xlabel('Neutrino Energy (GeV)')
-            plt.ylabel('Interaction Events')  
+            plt.ylabel('Interaction Events')
 
     #read the results from storage
     cache_file = tarball_path[:tarball_path.rfind('.')] + '.npy'
@@ -375,4 +376,4 @@ def collate(SNOwGLoBESdir, tarball_path, detector_input="", skip_plots=False, ve
             for file in tempdir.iterdir():
                 tar.add(file,arcname=output_name+'/'+file.name)
         logging.info(f'Created archive: {output_path}')
-    return results 
+    return results

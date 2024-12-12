@@ -6,7 +6,7 @@ Examples usage can be seen in :mod:`snewpy.models.ccsn`.
 
 .. autoclass:: Parameter
     :members:
-    
+
 .. autodecorator:: RegistryModel
 """
 from functools import wraps
@@ -23,7 +23,7 @@ from astropy import table
 from tqdm.auto import tqdm
 
 all_models = set()
-    
+
 def get_models_table(init:bool=False)->table.QTable:
     """Get the astropy.Table with all the possible Metadata parameters.
 
@@ -41,7 +41,7 @@ def get_models_table(init:bool=False)->table.QTable:
             metadata = [model(**params).metadata for params in param_combinations]
         else:
             metadata = [{model.parameters[key].label:val for key,val in params.items()} for params in param_combinations]
-            
+
         md_table = table.QTable(metadata)
         md_table['model']='.'.join([model.__module__,model.__name__])
         md_table['init_params']=param_combinations
@@ -50,10 +50,10 @@ def get_models_table(init:bool=False)->table.QTable:
             for key,value in model.__metadata__.items():
                 md_table[key]=value
         tables[model]=md_table
-    
+
     df = table.vstack(list(tables.values()))
     return df
-    
+
 def _can_decorate_class_or_func(func_decorator):
     """make the function decorator act as class decorator:
     if decorated object is a class, wrap its "__init__" function.
@@ -65,13 +65,13 @@ def _can_decorate_class_or_func(func_decorator):
         else:
             return func_decorator(obj)
     return _wrapper
-            
+
 def deprecated(*names, message='Argument `{name}` is deprecated.'):
     """A function decorator to issue a deprecation warning if a given argument is provided in the wrapped function call.
-    
+
     Parameters
     ----------
-    
+
     names: list of str
         argument names which are deprecated
     message: str
@@ -82,7 +82,7 @@ def deprecated(*names, message='Argument `{name}` is deprecated.'):
     @deprecated('foo','bar', message='Argument `{name}` is deprecated and will be removed in SNEWPYv2.0!')
     def test_function(*, foo=1, bar=2, baz=3):
         pass
-        
+
     #calling test_function(foo=1, baz=3) will issue a deprecation warning:
     #    DeprecationWarning: Argument `foo` is deprecated and will be removed in SNEWPYv2.0!
     """
@@ -104,33 +104,33 @@ def deprecated(*names, message='Argument `{name}` is deprecated.'):
 def map_arguments(**names_dict):
     """map function arguments to create a function with new signature,
     and with updated docstring
-    
+
     Parameters
     ----------
     names_dict: dict
         Argument names in format {old_name:new_name}
-    
+
     Examples
     --------
     >>> @map_arguments(bar='BAR')
     >>> def foo(bar, baz):
     >>>     print(f'bar={bar} baz={baz}')
     >>>
-    >>> foo(BAR=123, baz=10) 
+    >>> foo(BAR=123, baz=10)
     >>> #bar=123 baz=10
     """
     def _wrapper(func):
         S = inspect.signature(func) #old signature
         old2new = names_dict
         new2old = {v:k for k,v in old2new.items()}
-        
+
         @wraps(func)
         def func_new(*args, **kwargs):
             params = S1.bind(*args,**kwargs)
             kwargs_old = params.kwargs
             kwargs_new = {new2old.get(name,name):val for name,val in kwargs_old.items()}
             return func(*params.args,**kwargs_new)
-            
+
         #update signature
         S1 = S.replace(parameters=[
             p.replace(name=old2new.get(p.name,p.name)) for p in S.parameters.values()
@@ -146,7 +146,7 @@ def map_arguments(**names_dict):
             func_new.__init__.__doc__ = _update_docs(func.__init__.__doc__)
         return func_new
     return _wrapper
-    
+
 def _expand_defaults(func, **defaults):
     """Update the signature of the given function with the parameters with default values.
     Examples
@@ -179,9 +179,9 @@ _default_descriptions={'eos':'Equation of state',
 class Parameter:
     """A class to describe the model parameter: it's range of allowed values, name, description etc. """
     def __init__(self, values, *,
-                 name:str=None, 
-                 label:str=None, 
-                 description:str=None, 
+                 name:str=None,
+                 label:str=None,
+                 description:str=None,
                  desc_values:str=None,
                  precision:int=None):
         """
@@ -189,7 +189,7 @@ class Parameter:
         ----------
         values : iterable
             List of allowed parameter values. If len(values)==1 the parameter is considered fixed (this can be used to add default metadata to the model).
-            
+
         Other Parameters
         ------------------
         name : str
@@ -206,38 +206,38 @@ class Parameter:
         precision:int or None
             Number of decimals, used to round the input value if when testing if given element is in the list of allowed values. This should be used only if the `values` are an array of floats or `Quantity`.
             If `None` (default) no rounding is applied.
-            
-        If label or description is `None` they are derived from the name, 
+
+        If label or description is `None` they are derived from the name,
         by capitalizing and replacing underscores with spaces.
-        
+
         Examples
         --------
-        
+
         >>> # create a parameter object:
         >>> Parameter(range(0,100,1),name='supernova_parameter', desc_values='[0,1,...99]')
         Parameter(name="supernova_parameter", label="Supernova parameter", description="Supernova parameter", values='[0,1,...99]')
         """
         self.values = values
-        self.label = label 
+        self.label = label
         self.description = description
         self.desc_values = desc_values or str(values)
         self.precision = precision
         if(name):
             self.set_description_and_label(name)
-        
+
     def set_description_and_label(self, name:str):
         """Generate the description and label from the parameter given name"""
         self.label = self.label or _default_labels.get(name, name.replace('_',' ').capitalize())
         self.description = self.description or _default_descriptions.get(name,self.label)
-        
+
     def apply_precision(self, value):
         if self.precision:
             if hasattr(self.values, 'unit'):
-                #convert unit before 
-                value = value<<self.values.unit 
+                #convert unit before
+                value = value<<self.values.unit
             value = np.around(value,decimals=self.precision)
         return value
-        
+
     def __contains__(self, value):
         value = self.apply_precision(value)
         return value in self.values
@@ -289,7 +289,7 @@ class ParameterSet:
         self.valid_combinations_dict = [dict(zip(self.params,p)) for p in self.valid_combinations]
         #fill the default values for fixed parameters
         self.defaults = {name:p[0] for name,p in self.params.items() if p.fixed}
-            
+
     def _fill_default_parameters(self, **user_params)->dict:
         """Set the parameter values if they are missing in 'user_params' and fixed (i.e. have a single option"""
         return dict(self.defaults, **user_params)
@@ -301,7 +301,7 @@ class ParameterSet:
             if name in self.params:
                 user_params[name]=self.params[name].apply_precision(val)
         return user_params
-        
+
     def _check_all_parameters_present(self, **user_params):
         """Check that `user_params` contains all needed parameters, and nothing extra"""
         #check that we have all correct parameters
@@ -311,7 +311,7 @@ class ParameterSet:
         for name in self.params:
             if name not in user_params:
                 raise ValueError(f"Missing parameter '{name}'")
-                
+
     def _check_parameter_values(self, **user_params):
         """Check that provided user parameters are valid, i.e. are within the given list values"""
         for name in user_params:
@@ -354,10 +354,10 @@ class ParameterSet:
             type_name = p_type.__name__ if p_type else ''
             s+=[f'{name}: {type_name}\n    {p.description}. Valid values are: {p.desc_values}.']
         return '\n'.join(s)
-    
+
 def RegistryModel(_param_validator=None, **params):
     """A class decorator for defining the supernova model, that initializes from physics parameters.
-    
+
     Parameters
     -----------
     params:dict
@@ -370,11 +370,11 @@ def RegistryModel(_param_validator=None, **params):
     -------
         Model class
             A class, inherited from the input class, which has modified `__init__` function (see details below)
-    
+
     Note
     ----
     This decorator helps to construct the daughter of the given class, which automatically implements the constructor with:
-    
+
         * Validation of the input user parameters (see :meth:`RegistryModel.validate`)
         * Generated constructor docstring based on allowed parameters
         * Populates the `self.metadata` from the given user parameters
@@ -383,14 +383,14 @@ def RegistryModel(_param_validator=None, **params):
         The decorated class:
             * *must* inherit from the loader class
             * *must* implement the __init__ method, which
-            
+
                 1. defines the filename from the given user parameters
-                2. optionally modify the `self.metadata` dictionary, and 
+                2. optionally modify the `self.metadata` dictionary, and
                 3. calls the corresponding loader class constructor
             * *can* define the ``_metadata_from_filename (self, filename:str)->dict``, to help populate the metadata when a `filename` argument is passed
 
     If a parameter has a single allowed value (i.e. fixed), this value will be default for this parameter in constructor.
-    
+
     """
     pset:ParameterSet = ParameterSet(param_validator=_param_validator, **params)
     def _wrap(base_class):
@@ -403,7 +403,7 @@ def RegistryModel(_param_validator=None, **params):
                     s = f'{section}\n'+'-'*len(section)+'\n'+dedent(desc)
                     docstring+='\n'+s+'\n'
                 return docstring
-                
+
             def __init__(self, *args, **kwargs):
                 # enforce the default parameters
                 params = inspect.signature(self.__init__).bind(*args, **kwargs)
@@ -420,7 +420,7 @@ def RegistryModel(_param_validator=None, **params):
                 S = inspect.signature(super().__init__)
                 init_params = {name:val for name,val in arguments.items() if name in S.parameters}
                 return super().__init__(**init_params)
-                
+
             @classmethod
             def get_param_combinations(cls)->tuple:
                 """Get all valid combinations of parameters for a this registry model.
@@ -429,7 +429,7 @@ def RegistryModel(_param_validator=None, **params):
                 valid_combinations: tuple[dict]
                     A tuple of all valid parameter combinations stored as Dictionaries"""
                 return cls.parameters.valid_combinations_dict
-            
+
             param = {name: p.values for name, p in parameters.items()}
         #fill the constructor signature
         c.__init__.__signature__ = inspect.signature(base_class.__init__)
@@ -463,7 +463,7 @@ def RegistryModel(_param_validator=None, **params):
 
 def legacy_filename_initialization(c):
     """Wrap the model class, adding a filename argument in the init"""
-    
+
     @deprecated('filename')
     class c1(c):
         _loader_class = c.__mro__[2] #store the loader class for later use
