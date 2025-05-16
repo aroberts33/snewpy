@@ -138,7 +138,39 @@ def generate_fluence(model_path, model_type, transformation_type, d, output_file
     flavor_transformation = flavor_transformation_dict[transformation_type]
 
     model_dir, model_file = os.path.split(os.path.abspath(model_path))
+
+    # Current line in your snewpy/snowglobes.py:
     snmodel = model_class(model_path, **snmodel_dict)
+
+    # # PROPOSED CHANGE:
+    # if snmodel_dict: # If specific model parameters are provided in snmodel_dict
+    #     # Prioritize initializing the model with these parameters.
+    #     # The model's __init__ (e.g., Zha_2021.__init__) should handle constructing
+    #     # the internal relative filename needed for its loader.
+    #     try:
+    #         snmodel = model_class(**snmodel_dict)
+    #     except TypeError as e:
+    #         # This might happen if model_class still expects 'filename' due to legacy wrappers
+    #         # and snmodel_dict doesn't provide a dummy one.
+    #         # Or if snmodel_dict is missing a required parameter for parameter-based init.
+    #         print(f"Attempting parameter-based init for {model_class.__name__} failed: {e}")
+    #         print(f"Falling back to trying init with model_path: {model_path}")
+    #         # Fallback to original behavior if direct parameter init fails (might re-trigger old error)
+    #         # Or, be more strict: if snmodel_dict is present, it MUST work this way.
+    #         # For now, let's try to be smart. The Zha_2021 __init__ only takes progenitor_mass.
+    #         # The legacy wrapper adds 'filename'.
+    #         # The get_model(model_type) returns the class *after* legacy_filename_initialization.
+    #         # So model_class() will expect filename=None for param-based path.
+    #         try:
+    #             # Try calling it as if filename was None initially in the legacy wrapper
+    #             snmodel = model_class(filename=None, **snmodel_dict)
+    #         except Exception as e2:
+    #             print(f"Secondary attempt with filename=None also failed: {e2}")
+    #             print("Re-trying original call that led to error, for debugging.")
+    #             snmodel = model_class(model_path, **snmodel_dict) # This will likely re-trigger the error
+    # else:
+    #     # If no snmodel_dict, assume model_path is the primary identifier (old way)
+    #     snmodel = model_class(model_path)
 
     #set the timings up
     #default if inputs are None: full time window of the model
