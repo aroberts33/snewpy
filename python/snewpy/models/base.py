@@ -191,8 +191,8 @@ class SupernovaModel(ABC, LocalFileLoader):
         f = self.get_transformed_spectra(t, E, flavor_xform)
 
         array = np.stack([f[flv] for flv in sorted(Flavor)])
-        return  Flux(data=array*factor, flavor=np.sort(Flavor), time=t, energy=E)
-
+        data_for_flux_constructor = (array * factor) / E # Divide by the energy array E
+        return Flux(data=data_for_flux_constructor, flavor=np.sort(Flavor), time=t, energy=E)
 
 
     def get_oscillatedspectra(self, *args):

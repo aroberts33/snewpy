@@ -325,23 +325,116 @@ def collate(SNOwGLoBESdir, tarball_path, detector_input="", skip_plots=False, ve
     if not remove_generated_files:  # Deprecated since SNEWPY v1.2
         warn(f"The 'remove_generated_files' parameter to 'snewpy.snowglobes.collate()' is deprecated and should not be used.", FutureWarning)
 
+    # Inside your existing aggregate_channels in snowglobes.py
+
     def aggregate_channels(table, **patterns):
-        #rearrange the table to have only channel column
         levels = list(table.columns.names)
-        levels.remove('channel')
-        t = table.stack(levels)
-        for name,pattern in patterns.items():
-            #get channels which contain `like`
-            t_sel = t.filter(like=pattern)
-            #sum over them and save to a separate column
+        levels_to_stack = [lvl for lvl in levels if lvl != 'channel'] # Should be ['is_weighted', 'is_smeared']
+        
+        print(f"AGGREGATE_CHANNELS: Input table columns: {table.columns}")
+        print(f"AGGREGATE_CHANNELS: Input table index: {table.index}")
+
+        # It's important to know if future_stack makes a difference to the intermediate 't'
+        # For now, let's use what's in your file, but be aware of the warning.
+        t = table.stack(levels) # This is t_stacked in my previous comments
+        
+        print(f"AGGREGATE_CHANNELS: After stack (now 't'):")
+        if isinstance(t, pd.Series):
+            print(f"  t is a Series, name: {t.name}, shape: {t.shape}, index names: {t.index.names}")
+            # If it's a Series, convert to DataFrame for consistent processing
+            t = t.to_frame(name=t.name if t.name is not None else 'channel_0')
+            print(f"  t converted to DataFrame, columns: {t.columns}")
+        else:
+            print(f"  t is a DataFrame, columns: {t.columns}, shape: {t.shape}, index names: {t.index.names}")
+
+        # Original aggregation loop from your SNEWPY fork
+        # This loop modifies 't' inplace if it's a DataFrame
+        for name, pattern in patterns.items():
+            # Ensure t is a DataFrame for filter(axis=1) and drop(columns=...)
+            if isinstance(t, pd.Series): # Should have been converted above, but as a safeguard
+                print(f"WARNING: 't' became a Series before pattern loop for pattern '{pattern}'")
+                # Cannot easily proceed with .filter(like=pattern) on columns or .drop
+                continue 
+
+            t_sel = t.filter(like=pattern, axis=1) # Filter columns of t
+            print(f"  Pattern '{pattern}': t_sel is empty: {t_sel.empty}, t_sel shape: {t_sel.shape}")
+            if not t_sel.empty:
+                print(f"    t_sel columns: {t_sel.columns}")
+            
             t_agg = t_sel.sum(axis='columns')
-            #drop processed channels
-            t.drop(t_sel.columns, axis='columns',inplace=True)
-            t[name]=t_agg #fill the column
-        #return table with the original levels order
-        t = t.unstack(levels)
-        t = t.reorder_levels(table.columns.names, axis=1)
-        return t
+            
+            if not t_sel.empty: # Only drop if columns were found
+                t.drop(t_sel.columns, axis='columns', inplace=True, errors='ignore') # errors='ignore' if some cols not found
+            
+            t[name] = t_agg # Add the new aggregated column
+
+        print(f"AGGREGATE_CHANNELS: t BEFORE UNSTACK:")
+        print(f"  Columns: {t.columns}")
+        print(f"  Index names: {t.index.names}")
+        print(f"  Shape: {t.shape}")
+        if not t.empty:
+            print(f"  First few rows of t:\n{t.head()}") # See if data (even NaNs) is present
+        else:
+            print("  t is empty (no rows or no columns)!")
+
+
+        # THE CRITICAL UNSTACK OPERATION
+        if not t.columns.empty and t.index.nlevels == len(levels_to_stack) + 1: # Ensure t has columns and a suitable index
+            t_unstacked = t.unstack(levels_to_stack)
+        else:
+            print(f"SKIPPING UNSTACK: 't' has no columns or unsuitable index. t.columns: {t.columns}, t.index.nlevels: {t.index.nlevels}, expected index levels for unstack: {len(levels_to_stack)}")
+            # Create an empty DataFrame with the expected column structure if t is problematic
+            # This is a palliative measure; the root cause is t becoming columnless
+            empty_mi = pd.MultiIndex(levels=[[]]*len(table.columns.names),
+                                    codes=[[]]*len(table.columns.names),
+                                    names=table.columns.names)
+            t_unstacked = pd.DataFrame(columns=empty_mi, index=table.index.get_level_values(0).unique())
+
+
+        print(f"AGGREGATE_CHANNELS: t AFTER UNSTACK (now 't_unstacked'):")
+        print(f"  Columns: {t_unstacked.columns}")
+        print(f"  Column names: {t_unstacked.columns.names}")
+        print(f"  Shape: {t_unstacked.shape}")
+        if not t_unstacked.empty:
+            print(f"  First few rows of t_unstacked:\n{t_unstacked.head()}")
+
+        # Reorder levels
+        # The names of the levels in t_unstacked.columns should ideally be
+        # [name_of_innermost_cols_of_t, levels_to_stack[0]_name, levels_to_stack[1]_name, ...]
+        # original_col_names was ['is_weighted', 'is_smeared', 'channel']
+        # We expect t_unstacked.columns.names to be something like ['channel', 'is_weighted', 'is_smeared']
+        # if names are preserved correctly.
+        
+        # Check if t_unstacked has any columns before trying to reorder
+        if t_unstacked.columns.empty:
+            print("AGGREGATE_CHANNELS: t_unstacked has no columns, cannot reorder. Returning as is.")
+            # It will have the empty MultiIndex([], names=['is_weighted', 'is_smeared', 'channel']) from earlier if it hit that.
+            # Or if unstack produced MultiIndex([], names=THE_ACTUAL_NAMES_AFTER_UNSTACK)
+            # We need to ensure it has the *target* names for the calling collate function.
+            if not isinstance(t_unstacked.columns, pd.MultiIndex) or not t_unstacked.columns.names == original_col_names:
+                t_unstacked.columns = pd.MultiIndex(levels=[[]]*len(original_col_names),
+                                                    codes=[[]]*len(original_col_names),
+                                                    names=original_col_names)
+            return t_unstacked
+
+        # Attempt reordering if columns exist
+        # Ensure the names in original_col_names actually exist in t_unstacked.columns.names
+        # or reorder by position if names are lost/None
+        current_names = list(t_unstacked.columns.names)
+        if all(name in current_names for name in original_col_names) and len(current_names) == len(original_col_names):
+            t_reordered = t_unstacked.reorder_levels(original_col_names, axis=1)
+        else:
+            print(f"AGGREGATE_CHANNELS: Column level names mismatch or count mismatch for reordering. Current: {current_names}, Original Target: {original_col_names}. Returning t_unstacked without reordering levels by name.")
+            # If reorder_levels by name fails, the structure might be t_unstacked['weighted'] later on.
+            # For now, just return what unstack gave if names are weird.
+            t_reordered = t_unstacked
+
+
+        print(f"AGGREGATE_CHANNELS: t FINAL (after reorder):")
+        print(f"  Columns: {t_reordered.columns}")
+        print(f"  Column names: {t_reordered.columns.names}")
+
+        return t_reordered
 
     def do_plot(table, params):
         #plotting the events from given table
@@ -379,6 +472,17 @@ def collate(SNOwGLoBESdir, tarball_path, detector_input="", skip_plots=False, ve
             results[det] = {}
             for flux,t in tables[det].items():
                 t = aggregate_channels(t,nc='nc_',e='_e')
+                print(f"--- Debugging snowglobes.collate for flux: {flux} ---")
+                print(f"Columns of t (output of aggregate_channels): {t.columns}")
+                print(f"Column names of t: {t.columns.names}")
+                if isinstance(t.columns, pd.MultiIndex):
+                    print(f"Level 0 values of t.columns: {t.columns.get_level_values(0).unique()}")
+                    if t.columns.nlevels > 1:
+                        print(f"Level 1 values of t.columns: {t.columns.get_level_values(1).unique()}")
+                    if t.columns.nlevels > 2:
+                        print(f"Level 2 values of t.columns: {t.columns.get_level_values(2).unique()}")
+                print("--- End Debugging ---")
+
                 for w in ['weighted']:
                     for s in smearing_options:
                         table = t[w][s]

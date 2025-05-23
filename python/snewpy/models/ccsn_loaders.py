@@ -510,79 +510,135 @@ class Fornax_2019(SupernovaModel):
             norm = np.sqrt((2*l + 1.)/(2*np.pi)*self._fact(l - m)/self._fact(l + m))
             return norm * lpmv(m, l, np.cos(theta)) * np.cos(m*phi)
 
-    def _get_binnedspectra(self, t, theta, phi):
-        """Get binned neutrino spectrum at a particular time.
 
-        Parameters
-        ----------
-        t : float or astropy.Quantity
-            Time to evaluate initial and oscillated spectra.
-        theta : astropy.Quantity
-            Zenith angle of the spectral emission.
-        phi : astropy.Quantity
-            Azimuth angle of the spectral emission.
+    # def _get_binnedspectra(self, t, theta=None, phi=None): # Made theta, phi optional
+    #     E = {}
+    #     dE = {}
+    #     binspec = {}
 
-        Returns
-        -------
-        E : dict
-            Dictionary of energy bin central values, keyed by neutrino flavor.
-        dE : dict
-            Dictionary of energy bin widths, keyed by neutrino flavor.
-        binspec : dict
-            Dictionary of binned model spectra, keyed by neutrino flavor.
+    #     # convert input time to a time index.
+    #     current_time_val = t
+    #     if hasattr(t, 'shape') and t.shape: # if t is an array, take the first element
+    #         current_time_val = t[0] 
+
+    #     j = (np.abs(current_time_val.to(self.time.unit) - self.time)).argmin()
+
+    #     is_angle_averaged_calculation = (theta is None or phi is None)
+
+    #     for flavor in Flavor:
+    #         if self.is_cached:
+    #             _theta_val_rad_for_cache = 0.0
+    #             _phi_val_rad_for_cache = 0.0
+    #             if is_angle_averaged_calculation:
+    #                 # For cached data, if true angle-average isn't cached as a pixel, this defaults to a specific direction.
+    #                 # This might need a more sophisticated handling if cached 3D data is to be used for 1D analysis.
+    #                 logger.warning(f"Fornax_2019._get_binnedspectra: theta/phi not provided for cached data. Using default direction (theta=0, phi=0). This may not be a true angle average.")
+    #             else:
+    #                 _theta_val_rad_for_cache = theta.to_value('radian')
+    #                 _phi_val_rad_for_cache = phi.to_value('radian')
+
+    #             k = hp.ang2pix(self.nside, _theta_val_rad_for_cache, _phi_val_rad_for_cache)
+    #             E[flavor] = self.E[flavor][j]
+    #             dE[flavor] = self.dE[flavor][j]
+    #             binspec[flavor] = self.dLdE[flavor][j, :, k]
+    #         else: # Read the HDF5 input file directly
+    #             if flavor == Flavor.NU_X_BAR:
+    #                 E[flavor] = E[Flavor.NU_X]
+    #                 dE[flavor] = dE[Flavor.NU_X]
+    #                 binspec[flavor] = binspec[Flavor.NU_X]
+    #                 continue
+
+    #             key = self._flavorkeys[flavor]
+    #             E[flavor] = self._h5file[key]['egroup'][j] * u.MeV
+    #             dE[flavor] = self._h5file[key]['degroup'][j] * u.MeV
+    #             dLdE_values = np.zeros(len(E[flavor]), dtype=float)
+
+    #             for ebin in range(len(E[flavor])):
+    #                 if is_angle_averaged_calculation:
+    #                     # Calculate angle-averaged dL/dE using F_00 coefficient
+    #                     # L(E) = sqrt(4*pi) * F_00(E)
+    #                     F_00_at_ebin_j = self._h5file[key]['g{}'.format(ebin)]['l=0 m=0'][j]
+    #                     dLdE_values[ebin] = F_00_at_ebin_j * np.sqrt(4 * np.pi)
+    #                 else:
+    #                     # Directional calculation if theta and phi are provided
+    #                     _theta_val_rad_sph = theta.to_value('radian')
+    #                     _phi_val_rad_sph = phi.to_value('radian')
+    #                     dLdE_ebin_val = 0.0
+    #                     for l_val in range(3): # Sum up to l=2
+    #                         for m_val in range(-l_val, l_val + 1):
+    #                             Ylm_val = self._real_sph_harm(l_val, m_val, _theta_val_rad_sph, _phi_val_rad_sph)
+    #                             dLdE_ebin_val += self._h5file[key]['g{}'.format(ebin)]['l={} m={}'.format(l_val, m_val)][j] * Ylm_val
+    #                     dLdE_values[ebin] = dLdE_ebin_val
+
+    #             factor = 1. if flavor.is_electron else 0.25 # Account for nu_x representing 4 species vs 1.
+    #             binspec[flavor] = dLdE_values * factor * self.fluxunit
+    #             binspec[flavor] = binspec[flavor].to('erg/(s*MeV)')
+    #     return E, dE, binspec
+
+    def _get_binned_spectra_at_single_time(self, t_scalar_astropy, theta=None, phi=None):
         """
-        E = {}
-        dE = {}
-        binspec = {}
+        Helper function to get binned spectra for a single scalar time point.
+        Returns E_dict, dE_dict, binspec_dict where values are 1D arrays (N_model_energy_bins).
+        """
+        E_single_t = {}
+        dE_single_t = {} # You might not need dE if your model energies are fixed per flavor
+        binspec_single_t = {}
 
-        # Convert input time to a time index.
-        t = t.to(self.time.unit)
-        j = (np.abs(t - self.time)).argmin()
+        # Find the closest model time index 'j' for the given scalar t_scalar_astropy
+        j = (np.abs(t_scalar_astropy.to(self.time.unit) - self.time)).argmin()
+
+        is_angle_averaged_calculation = (theta is None or phi is None)
 
         for flavor in Flavor:
-            # Cached data: read out the relevant time and angular rows.
             if self.is_cached:
-                # Convert input angles to a HEALPix index.
-                k = hp.ang2pix(self.nside, theta.to_value('radian'), phi.to_value('radian'))
-                E[flavor] = self.E[flavor][j]
-                dE[flavor] = self.dE[flavor][j]
-                binspec[flavor] = self.dLdE[flavor][j, :, k]
-
-            # Read the HDF5 input file directly and extract the spectra.
-            else:
-                # File only contains NU_E, NU_E_BAR, and NU_X.
+                _theta_val_rad_for_cache = 0.0
+                _phi_val_rad_for_cache = 0.0
+                if is_angle_averaged_calculation:
+                    logger.warning(f"Fornax_2019._get_binned_spectra_at_single_time: theta/phi not provided for cached data. Using default direction (theta=0, phi=0). This may not be a true angle average.")
+                else:
+                    _theta_val_rad_for_cache = theta.to_value('radian')
+                    _phi_val_rad_for_cache = phi.to_value('radian')
+                
+                k_pix = hp.ang2pix(self.nside, _theta_val_rad_for_cache, _phi_val_rad_for_cache)
+                # self.E[flavor] and self.dLdE[flavor] are (Ntime_model, Nenergy_model_bins, [Npix_cached])
+                E_single_t[flavor] = self.E[flavor][j] 
+                dE_single_t[flavor] = self.dE[flavor][j] # Assuming dE is also (Ntime_model, Nenergy_model_bins)
+                binspec_single_t[flavor] = self.dLdE[flavor][j, :, k_pix] # This should be 1D (Nenergy_model_bins)
+            else: # Read HDF5
                 if flavor == Flavor.NU_X_BAR:
-                    E[flavor] = E[Flavor.NU_X]
-                    dE[flavor] = dE[Flavor.NU_X]
-                    binspec[flavor] = binspec[Flavor.NU_X]
+                    E_single_t[flavor] = E_single_t[Flavor.NU_X]
+                    dE_single_t[flavor] = dE_single_t[Flavor.NU_X]
+                    binspec_single_t[flavor] = binspec_single_t[Flavor.NU_X]
                     continue
 
                 key = self._flavorkeys[flavor]
+                # self._h5file[key]['egroup'] is (Ntime_model, Nenergy_model_bins)
+                E_single_t[flavor] = self._h5file[key]['egroup'][j] * u.MeV 
+                dE_single_t[flavor] = self._h5file[key]['degroup'][j] * u.MeV
+                dLdE_values_for_ebins = np.zeros(len(E_single_t[flavor]), dtype=float) # For this time j, iterate ebins
 
-                # Energy binning of the model for this flavor, in units of MeV.
-                E[flavor] = self._h5file[key]['egroup'][j] * u.MeV
-                dE[flavor] = self._h5file[key]['degroup'][j] * u.MeV
-
-                # Storage of differential flux per energy, angle, and time.
-                dLdE = np.zeros(len(E[flavor]), dtype=float)
-
-                # Loop over energy bins.
-                for ebin in range(len(E[flavor])):
-                    dLdE_j = 0
-                    # Sum over multipole moments.
-                    for l in range(3):
-                        for m in range(-l, l + 1):
-                            Ylm = self._real_sph_harm(l, m, theta.to_value('radian'), phi.to_value('radian'))
-                            dLdE_j += self._h5file[key]['g{}'.format(ebin)]['l={} m={}'.format(l, m)][j] * Ylm
-                    dLdE[ebin] = dLdE_j
-
+                for ebin in range(len(E_single_t[flavor])): # E_single_t[flavor] is 1D for current time j
+                    if is_angle_averaged_calculation:
+                        F_00_at_ebin_j = self._h5file[key]['g{}'.format(ebin)]['l=0 m=0'][j]
+                        dLdE_values_for_ebins[ebin] = F_00_at_ebin_j * np.sqrt(4 * np.pi)
+                    else:
+                        _theta_val_rad_sph = theta.to_value('radian')
+                        _phi_val_rad_sph = phi.to_value('radian')
+                        dLdE_ebin_val_sum = 0.0
+                        # Coefficients g{ebin}['l=L m=M'] are (Ntime_model,)
+                        for l_val in range(3):
+                            for m_val in range(-l_val, l_val + 1):
+                                Ylm_val = self._real_sph_harm(l_val, m_val, _theta_val_rad_sph, _phi_val_rad_sph)
+                                dLdE_ebin_val_sum += self._h5file[key]['g{}'.format(ebin)]['l={} m={}'.format(l_val, m_val)][j] * Ylm_val
+                        dLdE_values_for_ebins[ebin] = dLdE_ebin_val_sum
+                
                 factor = 1. if flavor.is_electron else 0.25
-                binspec[flavor] = dLdE * factor * self.fluxunit
-                binspec[flavor] = binspec[flavor].to('erg/(s*MeV)')
+                binspec_single_t[flavor] = dLdE_values_for_ebins * factor * self.fluxunit # This is now 1D (Nenergy_model_bins)
+                # binspec_single_t[flavor] = binspec_single_t[flavor].to('erg/(s*MeV)') # Ensure unit
+        return E_single_t, dE_single_t, binspec_single_t
 
-        return E, dE, binspec
 
-    def get_initial_spectra(self, t, E, theta, phi, flavors=Flavor, interpolation='linear'):
+    def get_initial_spectra(self, t, E, theta = None, phi = None, flavors=Flavor, interpolation='linear'):
         """Get neutrino spectra/luminosity curves before flavor transformation.
 
         Parameters
@@ -605,167 +661,67 @@ class Fornax_2019(SupernovaModel):
         initialspectra : dict
             Dictionary of model spectra, keyed by neutrino flavor.
         """
-        initialspectra = {}
+        # Ensure t is an array for iteration, even if a scalar is passed initially
+        t_array = t if hasattr(t, 'shape') and t.shape and len(t.shape)>0 else u.Quantity([t])
+        
+        ntimes = len(t_array)
+        nenergies_target = len(E) # Target number of energy bins for output
 
-        # Extract the binned spectra for the input t, theta, phi:
-        _E, _dE, _spec = self._get_binnedspectra(t, theta, phi)
+        # Initialize dictionary to hold the (Ntime x Nenergy_target) arrays for each flavor
+        initialspectra_all_times = {f: u.Quantity(np.zeros((ntimes, nenergies_target)), self.fluxunit.unit) for f in flavors}
 
-        # Avoid "division by zero" in retrieval of the spectrum.
-        E[E == 0] = np.finfo(float).eps * E.unit
-        logE = np.log10(E.to_value('MeV'))
+        E_target_MeV_np = E.to_value(u.MeV) # Target E bins for interpolation (1D numpy array)
+        logE_target_np = np.log10(np.where(E_target_MeV_np == 0, np.finfo(float).eps, E_target_MeV_np))
 
-        for flavor in flavors:
+        for i, t_scalar_i in enumerate(t_array): # Iterate over each requested time point
+            # Get the model's binned spectra (1D arrays) for this specific time t_scalar_i
+            _E_model_dict_single_t, _, _spec_model_dict_single_t = self._get_binned_spectra_at_single_time(t_scalar_i, theta, phi)
 
-            # Linear interpolation in flux.
-            if interpolation.lower() == 'linear':
-                # Pad log(E) array with values where flux is fixed to zero.
-                _logE = np.log10(_E[flavor].to_value('MeV'))
-                _dlogE = np.diff(_logE)
-                _logEbins = np.insert(_logE, 0, np.log10(np.finfo(float).eps * E.unit/u.MeV))
-                _logEbins = np.append(_logEbins, _logE[-1] + _dlogE[-1])
+            for flavor in flavors:
+                _E_model_flavor_np = _E_model_dict_single_t[flavor].to_value('MeV') # 1D (N_model_energy_bins)
+                _spec_model_flavor_np = _spec_model_dict_single_t[flavor].to_value(self.fluxunit.unit) # 1D (N_model_energy_bins)
 
-                # Pad with values where flux is fixed to zero.
-                _dLdE = _spec[flavor].to_value(self.fluxunit)
-                _dLdE = np.insert(_dLdE, 0, 0.)
-                _dLdE = np.append(_dLdE, 0.)
+                if interpolation.lower() == 'linear':
+                    _logE_model_np = np.log10(np.where(_E_model_flavor_np == 0, np.finfo(float).eps, _E_model_flavor_np))
+                    
+                    # Pad for interpolation to handle energies outside model's E range
+                    _logE_padded = np.concatenate(([np.log10(np.finfo(float).eps)], _logE_model_np, [_logE_model_np[-1] + (_logE_model_np[-1]-_logE_model_np[-2] if len(_logE_model_np)>1 else 1.0)]))
+                    _spec_padded = np.concatenate(([0.], _spec_model_flavor_np, [0.]))
+                    
+                    interpolated_flux_at_time_i = np.interp(logE_target_np, _logE_padded, _spec_padded)
+                    initialspectra_all_times[flavor][i, :] = interpolated_flux_at_time_i * self.fluxunit.unit
+                
+                elif interpolation.lower() == 'nearest':
+                    _logE_model_np = np.log10(np.where(_E_model_flavor_np == 0, np.finfo(float).eps, _E_model_flavor_np))
+                    
+                    if len(_logE_model_np) > 1:
+                        _dlogE_half_np = np.diff(_logE_model_np) / 2.0
+                        _logE_bin_edges_np = np.concatenate(([_logE_model_np[0] - _dlogE_half_np[0]], _logE_model_np[:-1] + _dlogE_half_np, [_logE_model_np[-1] + _dlogE_half_np[-1]]))
+                    elif len(_logE_model_np) == 1: # Single energy bin in model
+                        _logE_bin_edges_np = np.array([_logE_model_np[0] - 0.1, _logE_model_np[0] + 0.1]) # Arbitrary small range
+                    else: # No energy bins in model (empty spectrum)
+                        _logE_bin_edges_np = np.array([np.log10(np.finfo(float).eps), np.log10(np.finfo(float).eps*2)])
 
-                initialspectra[flavor] = np.interp(logE, _logEbins, _dLdE) * self.fluxunit
+                    indices = np.searchsorted(_logE_bin_edges_np, logE_target_np, side='right') - 1
+                    indices = np.clip(indices, 0, len(_spec_model_flavor_np)-1 if len(_spec_model_flavor_np)>0 else 0)
 
-            elif interpolation.lower() == 'nearest':
-                _logE = np.log10(_E[flavor].to_value('MeV'))
-                _dlogE = np.diff(_logE)[0]
-                _logEbins = _logE - _dlogE
-                _logEbins = np.concatenate((_logEbins, [_logE[-1] + _dlogE]))
-                _Ebins = 10**_logEbins
+                    if len(_spec_model_flavor_np) > 0:
+                        selected_flux_values = _spec_model_flavor_np[indices]
+                    else:
+                        selected_flux_values = np.zeros(nenergies_target)
+                        
+                    initialspectra_all_times[flavor][i, :] = selected_flux_values * self.fluxunit.unit
+                else:
+                    raise ValueError(f'Unrecognized interpolation type "{interpolation}"')
 
-                idx = np.searchsorted(_Ebins, E) - 1
-                select = (idx > 0) & (idx < len(_E[flavor]))
-
-                _dLdE = np.zeros(len(E))
-                _dLdE[np.where(select)] = np.asarray([_spec[flavor][i].to_value(self.fluxunit) for i in idx[select]])
-                initialspectra[flavor] = _dLdE * self.fluxunit
-
-            else:
-                raise ValueError('Unrecognized interpolation type "{}"'.format(interpolation))
-
-        return initialspectra
-
-
-class Fornax_2021(SupernovaModel):
-    def __init__(self, filename, metadata={}):
-        """
-        Parameters
-        ----------
-        filename : str
-            Absolute or relative path to HDF5 file with model data.
-        """
-
-        # Open the requested filename using the model downloader.
-        datafile = self.request_file(filename)
-        # Set up model metadata.
-        self.progenitor_mass = float(filename.split('/')[-1].split('_')[2][:-1]) * u.Msun
-        self.metadata = metadata
-        # Open HDF5 data file.
-        _h5file = h5py.File(datafile, 'r')
-
-        self.time = _h5file['nu0'].attrs['time'] * u.s
-
-        self.luminosity = {}
-        self._E = {}
-        self._dLdE = {}
-        for flavor in Flavor:
-            # Convert flavor to key name in the model HDF5 file
-            key = {Flavor.NU_E: 'nu0',
-                   Flavor.NU_E_BAR: 'nu1',
-                   Flavor.NU_X: 'nu2',
-                   Flavor.NU_X_BAR: 'nu2'}[flavor]
-
-            self._E[flavor] = np.asarray(_h5file[key]['egroup'])
-            self._dLdE[flavor] = {f"g{i}": np.asarray(_h5file[key][f'g{i}']) for i in range(12)}
-
-            # Compute luminosity by integrating over model energy bins.
-            dE = np.asarray(_h5file[key]['degroup'])
-            n = len(dE[0])
-            dLdE = np.zeros((len(self.time), n), dtype=float)
-            for i in range(n):
-                dLdE[:, i] = self._dLdE[flavor][f"g{i}"]
-
-            # Note factor of 0.25 in nu_x and nu_x_bar.
-            factor = 1. if flavor.is_electron else 0.25
-            self.luminosity[flavor] = np.sum(dLdE*dE, axis=1) * factor * 1e50 * u.erg/u.s
-
-    def get_initial_spectra(self, t, E, flavors=Flavor, interpolation='linear'):
-        """Get neutrino spectra/luminosity curves after oscillation.
-
-        Parameters
-        ----------
-        t : astropy.Quantity
-            Time to evaluate initial spectra.
-        E : astropy.Quantity or ndarray of astropy.Quantity
-            Energies to evaluate the initial spectra.
-        flavors: iterable of snewpy.neutrino.Flavor
-            Return spectra for these flavors only (default: all)
-        interpolation : str
-            Scheme to interpolate in spectra ('nearest', 'linear').
-
-        Returns
-        -------
-        initialspectra : dict
-            Dictionary of model spectra, keyed by neutrino flavor.
-        """
-        initialspectra = {}
-
-        # Avoid "division by zero" in retrieval of the spectrum.
-        E[E == 0] = np.finfo(float).eps * E.unit
-        logE = np.log10(E.to_value('MeV'))
-
-        # Make sure the input time uses the same units as the model time grid.
-        # Convert input time to a time index.
-        t = u.Quantity(t.to(self.time.unit), ndmin=1)
-        j = np.array(list(np.abs(_t - self.time).argmin() for _t in t))
-
-        for flavor in flavors:
-            # Energy bin centers (in MeV)
-            _E = self._E[flavor][j]
-            _logE = np.log10(_E)
-            _dlogE = np.diff(_logE)
-
-            # Model flavors (internally) are nu_e, nu_e_bar, and nu_x, which stands
-            # for nu_mu(_bar) and nu_tau(_bar), making the flux 4x higher than nu_e and nu_e_bar.
-            factor = 1. if flavor.is_electron else 0.25
-
-            # Linear interpolation in flux.
-            if interpolation.lower() == 'linear':
-                # Pad log(E) array with values where flux is fixed to zero.
-                _logEbins = np.insert(_logE, 0, np.log10(np.finfo(float).eps * E.unit/u.MeV), axis=1)
-                _logEbins = np.append(_logEbins, np.expand_dims(_logE[:,-1] + _dlogE[:,-1], 1), axis=1)
-
-                # Luminosity spectrum _dLdE is in units of 1e50 erg/s/MeV.
-                # Pad with values where flux is fixed to zero, then divide by E to get number luminosity
-                _dNLdE = np.asarray([np.zeros(j.shape)] + [self._dLdE[flavor]['g{}'.format(i)][j] for i in range(12)] + [np.zeros(j.shape)]).T
-                interp_values = np.array([np.interp(logE, __logEbins, __dNLdE)
-                                          for __logEbins, __dNLdE in zip(_logEbins, _dNLdE)])
-                initialspectra[flavor] = (interp_values / E * factor * 1e50 * u.erg/u.s/u.MeV).to('1 / (erg s)')
-
-            elif interpolation.lower() == 'nearest':
-                # Find edges of energy bins and identify which energy bin (each entry of) E falls into
-                _logEbinEdges = _logE - _dlogE[0,0] / 2
-                _logEbinEdges = np.append(_logEbinEdges, np.expand_dims(_logE[:,-1] + _dlogE[:,-1]/2, 1), axis=1)
-                _EbinEdges = 10**_logEbinEdges
-                idx = np.array([np.searchsorted(edges, E) - 1 for edges in _EbinEdges])
-                select = np.array([(_idx > 0) & (_idx < len(__E)) for _idx, __E in zip(idx, _E)])
-
-                # Divide luminosity spectrum by energy at bin center to get number luminosity spectrum
-                _dNLdE = np.zeros([len(j), len(np.atleast_1d(E))])
-                for i in range(len(j)):
-                    _dNLdE[i][np.where(select[i])] = np.asarray([self._dLdE[flavor]['g{}'.format(ebin_idx)][j[i]] / _E[i][ebin_idx]
-                                                                 for ebin_idx in idx[i][select[i]]])
-                initialspectra[flavor] = ((_dNLdE << 1/u.MeV) * factor * 1e50 * u.erg/u.s/u.MeV).to('1 / (erg s)')
-
-            else:
-                raise ValueError('Unrecognized interpolation type "{}"'.format(interpolation))
-
-        return initialspectra
+        # If the original t was scalar, we should return 1D arrays (Nenergy,)
+        # The calling `get_transformed_spectra` in base.py usually handles the stacking if t was an array.
+        # Let's ensure this function returns what get_transformed_spectra expects.
+        # If t (original input) was scalar, then t_array had len 1. So return [0,:] slice.
+        if t.isscalar: # Check original t
+            return {f: initialspectra_all_times[f][0,:] for f in flavors}
+        else:
+            return initialspectra_all_times
 
 
 # class Fornax_2022(Fornax_2021):
@@ -814,7 +770,7 @@ class Fornax_2021(SupernovaModel):
 #             factor = 1. if flavor.is_electron else 0.25
 #             self.luminosity[flavor] = np.sum(dLdE*dE, axis=1) * factor * 1e50 * u.erg/u.s
 
-class Fornax_2022(Fornax_2021):
+class Fornax_2022(Fornax_2019):
     def __init__(self, filename, metadata={}):
         """
         Parameters

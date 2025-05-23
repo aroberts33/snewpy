@@ -474,7 +474,7 @@ def legacy_filename_initialization(c):
                     self.metadata = {}
                 if hasattr(self,'_metadata_from_filename'):
                     self.metadata.update(self._metadata_from_filename(filename))
-                self._loader_class.__init__(self, filename=os.path.abspath(filename), metadata=self.metadata)
+                self._loader_class.__init__(self, filename=filename, metadata=self.metadata)
             else:
                 super().__init__(*args, **kwargs)
 

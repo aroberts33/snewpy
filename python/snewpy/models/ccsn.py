@@ -375,7 +375,7 @@ class Fornax_2019(loaders.Fornax_2019):
     progenitor_mass = Parameter((list(range(12, 24)) + [25, 26, 26.99]) * u.Msun,
                                 desc_values='[12..23, 25, 26, 26.99] solMass')
 )
-class Fornax_2021(loaders.Fornax_2021):
+class Fornax_2021(loaders.Fornax_2019):
     """Model based on 3D simulations from D. Vartanyan, A. Burrows, D. Radice, M.  A. Skinner and J. Dolence, MNRAS 482(1):351, 2019.
        Data available at https://www.astro.princeton.edu/~burrows/nu-emissions.3d/
         """
@@ -426,7 +426,7 @@ for progenitor in _fornax_2022_progenitors:
     try:
         # Strip any non-numeric characters and convert to float
         mass = float(progenitor.rstrip('ab'))
-        print(mass)
+        # print(mass)
         _fornax_2022_masses.append(mass * u.Msun)
     except ValueError:
         # Handle cases like '9a' or '9b' as needed
