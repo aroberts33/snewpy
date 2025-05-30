@@ -141,6 +141,7 @@ def generate_fluence(model_path, model_type, transformation_type, d, output_file
 
     # Current line in your snewpy/snowglobes.py:
     snmodel = model_class(model_path, **snmodel_dict)
+    print(f"SNEWPY INFO: For model_type '{model_type}', using data file: {getattr(snmodel, 'filename', 'N/A')} (Loader: {getattr(snmodel, '_loader', {}).get('filename', 'N/A')})") # Try to get filename
 
     # # PROPOSED CHANGE:
     # if snmodel_dict: # If specific model parameters are provided in snmodel_dict
@@ -187,7 +188,8 @@ def generate_fluence(model_path, model_type, transformation_type, d, output_file
         times.sort()
 
     #energy with 0.2 MeV binning
-    energy   = np.arange(0, 101, 0.2) << u.MeV
+    # energy   = np.arange(0, 101, 0.2) << u.MeV
+    energy = (np.arange(505) * 0.2 + 0.1) * u.MeV  # 0.1 MeV bin centers, 0.2 MeV bin width
     #energy bins similar to SNOwGLoBES
     energy_t = (np.linspace(0, 100, 201)+0.25) << u.MeV
     flux = snmodel.get_flux(t=snmodel.get_time(), E=energy,  distance=d, flavor_xform=flavor_transformation)
@@ -261,16 +263,20 @@ def simulate(SNOwGLoBESdir, tarball_path, detector_input="all", verbose=False, *
             df = pd.DataFrame(data, index = ebins)
             df.index.rename('E', inplace=True)
             df.columns.rename(['channel','is_smeared','is_weighted'], inplace=True)
+
             df = df.reorder_levels([2,1,0], axis='columns')
+            df.replace([np.inf, -np.inf], np.nan, inplace=True) # First, ensure infs are NaNs
+            df.fillna(0.0, inplace=True) # Now, fill NaNs with 0.0
+
             if len(tbins) > 1:
                 result[det][f'{fname_base}_{n_bin:01d}'] = df
             else:
                 result[det][f'{fname_base}'] = df
-
+           
     # save result to file for re-use in collate()
     cache_file = f'{fname_base}.npy'
     logging.info(f'Saving simulation results to {cache_file}')
-    np.save(cache_file, result)
+    np.save(cache_file, result) # result will now contain DataFrames with 0s instead of NaNs
     return result
 
 
@@ -327,114 +333,112 @@ def collate(SNOwGLoBESdir, tarball_path, detector_input="", skip_plots=False, ve
 
     # Inside your existing aggregate_channels in snowglobes.py
 
-    def aggregate_channels(table, **patterns):
-        levels = list(table.columns.names)
-        levels_to_stack = [lvl for lvl in levels if lvl != 'channel'] # Should be ['is_weighted', 'is_smeared']
+    # 
+    
+    # In your /home/aroberts/SN_project/snewpy_fork/snewpy/python/snewpy/snowglobes.py
+
+    def aggregate_channels(table: pd.DataFrame, **patterns: str) -> pd.DataFrame:
+        if table.empty:
+            return table # Return early if input is already empty
+
+        original_col_names_from_input = list(table.columns.names) # Save for later reordering
+        levels_to_stack = [name for name in original_col_names_from_input if name != 'channel']
+
+        # Use future_stack=True to be explicit and avoid the warning
+        # This stacks ['is_weighted', 'is_smeared'] levels into the index.
+        # The columns of df_stacked will be the original 'channel' names.
+        df_stacked = table.stack(levels_to_stack, future_stack=True, ) # Use dropna=False explicitly
+
+        # If df_stacked becomes a Series (e.g., only one unique original channel string)
+        # convert it to a DataFrame for consistent processing.
+        if isinstance(df_stacked, pd.Series):
+            s_name = df_stacked.name
+            df_stacked = df_stacked.to_frame(name=s_name if s_name is not None else 'unknown_channel_placeholder')
+            # After to_frame, df_stacked.columns is Index(['unknown_channel_placeholder'], dtype='object')
+            # And df_stacked.columns.name is None
+
+        # df_stacked is now a DataFrame. Its columns are the original channel names.
+        # Its index is (original_index_levels..., is_weighted_val, is_smeared_val)
+        # Index names might be (original_index_name, 'is_weighted', 'is_smeared')
+
+        # --- Aggregation Logic ---
+        # Create a copy to modify, or build a list of series to concat
+        processed_df = df_stacked.copy() # Start with all original channels that were columns in df_stacked
+
+        for agg_name, pattern in patterns.items():
+            # Select columns (original channels) that match the pattern
+            # Ensure columns are strings for .str.contains if they are not already
+            cols_to_aggregate_mask = processed_df.columns.astype(str).str.contains(pattern, regex=True)
+            cols_to_aggregate = processed_df.columns[cols_to_aggregate_mask].tolist()
+
+            if cols_to_aggregate:
+                processed_df[agg_name] = processed_df[cols_to_aggregate].sum(axis=1)
+                processed_df.drop(columns=cols_to_aggregate, inplace=True)
+        # --- End Aggregation Logic ---
+
+        # Now, processed_df contains non-aggregated channels + new aggregated channels (like 'nc', 'e')
+        # Its index is still (original_index_levels..., is_weighted_val, is_smeared_val)
+
+        if processed_df.empty and processed_df.columns.empty : # If NO columns are left (e.g. all aggregated away AND originals dropped)
+            # This might happen if input 'table' had only channels that matched patterns,
+            # and they were all summed and dropped, leaving only new aggregated columns.
+            # If 'processed_df' is truly empty (0x0), unstacking might be an issue.
+            # However, if it has an index but 0 columns, unstacking specific index levels
+            # should produce a DataFrame with 0 columns but the correct new column MultiIndex structure.
+            # Let's assume unstack handles DataFrames with 0 columns but a valid index to unstack.
+            pass
+
+
+        df_unstacked = processed_df.unstack(levels_to_stack)
+        # After unstack, the column levels will be:
+        # (current_columns_of_processed_df, values_from_is_weighted, values_from_is_smeared)
+        # Their names will be (processed_df.columns.name, 'is_weighted', 'is_smeared')
+
+        # Reorder to the original desired output structure: ('is_weighted', 'is_smeared', 'channel')
+        # The 'channel' here refers to the new set of channels (original un-aggregated + new aggregated)
         
-        print(f"AGGREGATE_CHANNELS: Input table columns: {table.columns}")
-        print(f"AGGREGATE_CHANNELS: Input table index: {table.index}")
-
-        # It's important to know if future_stack makes a difference to the intermediate 't'
-        # For now, let's use what's in your file, but be aware of the warning.
-        t = table.stack(levels) # This is t_stacked in my previous comments
+        # Get current names after unstack
+        current_unstacked_names = list(df_unstacked.columns.names)
+        target_names_for_reorder = []
         
-        print(f"AGGREGATE_CHANNELS: After stack (now 't'):")
-        if isinstance(t, pd.Series):
-            print(f"  t is a Series, name: {t.name}, shape: {t.shape}, index names: {t.index.names}")
-            # If it's a Series, convert to DataFrame for consistent processing
-            t = t.to_frame(name=t.name if t.name is not None else 'channel_0')
-            print(f"  t converted to DataFrame, columns: {t.columns}")
-        else:
-            print(f"  t is a DataFrame, columns: {t.columns}, shape: {t.shape}, index names: {t.index.names}")
-
-        # Original aggregation loop from your SNEWPY fork
-        # This loop modifies 't' inplace if it's a DataFrame
-        for name, pattern in patterns.items():
-            # Ensure t is a DataFrame for filter(axis=1) and drop(columns=...)
-            if isinstance(t, pd.Series): # Should have been converted above, but as a safeguard
-                print(f"WARNING: 't' became a Series before pattern loop for pattern '{pattern}'")
-                # Cannot easily proceed with .filter(like=pattern) on columns or .drop
-                continue 
-
-            t_sel = t.filter(like=pattern, axis=1) # Filter columns of t
-            print(f"  Pattern '{pattern}': t_sel is empty: {t_sel.empty}, t_sel shape: {t_sel.shape}")
-            if not t_sel.empty:
-                print(f"    t_sel columns: {t_sel.columns}")
-            
-            t_agg = t_sel.sum(axis='columns')
-            
-            if not t_sel.empty: # Only drop if columns were found
-                t.drop(t_sel.columns, axis='columns', inplace=True, errors='ignore') # errors='ignore' if some cols not found
-            
-            t[name] = t_agg # Add the new aggregated column
-
-        print(f"AGGREGATE_CHANNELS: t BEFORE UNSTACK:")
-        print(f"  Columns: {t.columns}")
-        print(f"  Index names: {t.index.names}")
-        print(f"  Shape: {t.shape}")
-        if not t.empty:
-            print(f"  First few rows of t:\n{t.head()}") # See if data (even NaNs) is present
-        else:
-            print("  t is empty (no rows or no columns)!")
-
-
-        # THE CRITICAL UNSTACK OPERATION
-        if not t.columns.empty and t.index.nlevels == len(levels_to_stack) + 1: # Ensure t has columns and a suitable index
-            t_unstacked = t.unstack(levels_to_stack)
-        else:
-            print(f"SKIPPING UNSTACK: 't' has no columns or unsuitable index. t.columns: {t.columns}, t.index.nlevels: {t.index.nlevels}, expected index levels for unstack: {len(levels_to_stack)}")
-            # Create an empty DataFrame with the expected column structure if t is problematic
-            # This is a palliative measure; the root cause is t becoming columnless
-            empty_mi = pd.MultiIndex(levels=[[]]*len(table.columns.names),
-                                    codes=[[]]*len(table.columns.names),
-                                    names=table.columns.names)
-            t_unstacked = pd.DataFrame(columns=empty_mi, index=table.index.get_level_values(0).unique())
-
-
-        print(f"AGGREGATE_CHANNELS: t AFTER UNSTACK (now 't_unstacked'):")
-        print(f"  Columns: {t_unstacked.columns}")
-        print(f"  Column names: {t_unstacked.columns.names}")
-        print(f"  Shape: {t_unstacked.shape}")
-        if not t_unstacked.empty:
-            print(f"  First few rows of t_unstacked:\n{t_unstacked.head()}")
-
-        # Reorder levels
-        # The names of the levels in t_unstacked.columns should ideally be
-        # [name_of_innermost_cols_of_t, levels_to_stack[0]_name, levels_to_stack[1]_name, ...]
-        # original_col_names was ['is_weighted', 'is_smeared', 'channel']
-        # We expect t_unstacked.columns.names to be something like ['channel', 'is_weighted', 'is_smeared']
-        # if names are preserved correctly.
+        # Build the target order for reorder_levels based on original_col_names_from_input
+        if 'is_weighted' in current_unstacked_names: target_names_for_reorder.append('is_weighted')
+        if 'is_smeared' in current_unstacked_names: target_names_for_reorder.append('is_smeared')
         
-        # Check if t_unstacked has any columns before trying to reorder
-        if t_unstacked.columns.empty:
-            print("AGGREGATE_CHANNELS: t_unstacked has no columns, cannot reorder. Returning as is.")
-            # It will have the empty MultiIndex([], names=['is_weighted', 'is_smeared', 'channel']) from earlier if it hit that.
-            # Or if unstack produced MultiIndex([], names=THE_ACTUAL_NAMES_AFTER_UNSTACK)
-            # We need to ensure it has the *target* names for the calling collate function.
-            if not isinstance(t_unstacked.columns, pd.MultiIndex) or not t_unstacked.columns.names == original_col_names:
-                t_unstacked.columns = pd.MultiIndex(levels=[[]]*len(original_col_names),
-                                                    codes=[[]]*len(original_col_names),
-                                                    names=original_col_names)
-            return t_unstacked
-
-        # Attempt reordering if columns exist
-        # Ensure the names in original_col_names actually exist in t_unstacked.columns.names
-        # or reorder by position if names are lost/None
-        current_names = list(t_unstacked.columns.names)
-        if all(name in current_names for name in original_col_names) and len(current_names) == len(original_col_names):
-            t_reordered = t_unstacked.reorder_levels(original_col_names, axis=1)
-        else:
-            print(f"AGGREGATE_CHANNELS: Column level names mismatch or count mismatch for reordering. Current: {current_names}, Original Target: {original_col_names}. Returning t_unstacked without reordering levels by name.")
-            # If reorder_levels by name fails, the structure might be t_unstacked['weighted'] later on.
-            # For now, just return what unstack gave if names are weird.
-            t_reordered = t_unstacked
+        # The remaining level name should be the one that held the channel strings
+        # This was the .columns.name of processed_df before unstacking.
+        # Often this might be None or the original 'channel' if preserved.
+        channel_level_name_after_unstack = [n for n in current_unstacked_names if n not in ['is_weighted', 'is_smeared']]
+        if channel_level_name_after_unstack:
+            target_names_for_reorder.append(channel_level_name_after_unstack[0])
+        elif 'channel' in original_col_names_from_input and len(current_unstacked_names) == len(original_col_names_from_input):
+            # If names were lost, but count matches, assume 'channel' is the one missing from target
+            target_names_for_reorder.append(original_col_names_from_input[original_col_names_from_input.index('channel')])
 
 
-        print(f"AGGREGATE_CHANNELS: t FINAL (after reorder):")
-        print(f"  Columns: {t_reordered.columns}")
-        print(f"  Column names: {t_reordered.columns.names}")
+        if len(target_names_for_reorder) == df_unstacked.columns.nlevels and not df_unstacked.columns.empty:
+            try:
+                df_reordered = df_unstacked.reorder_levels(target_names_for_reorder, axis=1)
+                # Also ensure the names themselves are set correctly if reorder_levels doesn't do it
+                df_reordered.columns.names = original_col_names_from_input 
+                return df_reordered
+            except Exception as e:
+                logger.error(f"Error during reorder_levels in aggregate_channels: {e}. Current names: {current_unstacked_names}, Target names: {target_names_for_reorder}")
+                # Fallback: return df_unstacked, but ensure it has the target names if possible, even if order is wrong
+                if len(df_unstacked.columns.names) == len(original_col_names_from_input):
+                    try_renaming = dict(zip(df_unstacked.columns.names, original_col_names_from_input))
+                    df_unstacked = df_unstacked.rename_axis(columns=try_renaming)
 
-        return t_reordered
+                return df_unstacked # Return un-reordered if reordering failed but columns exist
+        elif df_unstacked.columns.empty: # If unstack resulted in empty columns (should have names from my fallback)
+            # Ensure it has the correct empty MultiIndex structure expected by the caller
+            df_unstacked.columns = pd.MultiIndex(levels=[[]]*len(original_col_names_from_input),
+                                                codes=[[]]*len(original_col_names_from_input),
+                                                names=original_col_names_from_input)
+            return df_unstacked
+        else: # Mismatch in number of levels or some other issue
+            logger.warning(f"aggregate_channels: Could not reorder levels. Returning df_unstacked. Dims: {df_unstacked.columns.nlevels} vs {len(original_col_names_from_input)}")
+            return df_unstacked
 
     def do_plot(table, params):
         #plotting the events from given table
