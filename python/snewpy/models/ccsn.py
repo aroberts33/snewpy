@@ -349,21 +349,10 @@ class Kuroda_2020(loaders.Kuroda_2020):
     progenitor_mass=[9, 10, 12, 13, 14, 15, 16, 19, 25, 60] * u.Msun,
 )
 class Fornax_2019(loaders.Fornax_2019):
-    """Model based on 3D simulations from D. Vartanyan, A. Burrows, D. Radice, M.  A. Skinner and J. Dolence, MNRAS 482(1):351, 2019.
+    """Model based on 3D simulations from D. Vartanyan, A. Burrows, D. Radice, M. A. Skinner and J. Dolence, MNRAS 482(1):351, 2019.
        Data available at https://www.astro.princeton.edu/~burrows/nu-emissions.3d/
     """
-    def _metadata_from_filename(self, filename:str)->dict:
-        progenitor_mass = os.path.splitext(os.path.basename(filename))[0].split('_')[2]
-        metadata = {'Progenitor mass': int(progenitor_mass[:-1]) * u.Msun}
-        return metadata
-
     def __init__(self, cache_flux=False, *, progenitor_mass):
-        """
-        Parameters
-        ----------
-        cache_flux : bool
-            If true, pre-compute the flux on a fixed angular grid and store the values in a FITS file.
-        """
         if progenitor_mass.value == 16:
             filename = f'lum_spec_{int(progenitor_mass.value):d}M_r250.h5'
         else:
@@ -375,17 +364,11 @@ class Fornax_2019(loaders.Fornax_2019):
     progenitor_mass = Parameter((list(range(12, 24)) + [25, 26, 26.99]) * u.Msun,
                                 desc_values='[12..23, 25, 26, 26.99] solMass')
 )
-class Fornax_2021(loaders.Fornax_2019):
+class Fornax_2021(loaders.Fornax_2021): # Make sure this points to the new loader class
     """Model based on 3D simulations from D. Vartanyan, A. Burrows, D. Radice, M.  A. Skinner and J. Dolence, MNRAS 482(1):351, 2019.
        Data available at https://www.astro.princeton.edu/~burrows/nu-emissions.3d/
-        """
-    def _metadata_from_filename(self, filename:str)->dict:
-        progenitor_mass = os.path.splitext(os.path.basename(filename))[0].split('_')[2]
-        metadata = {'Progenitor mass': float(progenitor_mass[:-1]) * u.Msun}
-        return metadata
-
+    """
     def __init__(self, progenitor_mass:u.Quantity):
-        # Load from Parameters
         if progenitor_mass.value.is_integer():
             filename = f'lum_spec_{int(progenitor_mass.value):2d}M_r10000_dat.h5'
         else:
@@ -415,67 +398,67 @@ class Fornax_2021(loaders.Fornax_2019):
 #                   '22.00',    '22.30',    '22.82',    '23.00',    '23.04',
 #                   '23.43',    '24.00',    '25.00',    '26.00',    '26.99']
 
-_fornax_2022_progenitors = [
-    '9a', '9b', '9.25', '9.5', '11', '12.25', '14', '15.01', '16',
-    '17', '18', '18.5', '19', '19.56', '20', '21.68', '23', '24', '25', '40', '60'
-]
+# _fornax_2022_progenitors = [
+#     '9a', '9b', '9.25', '9.5', '11', '12.25', '14', '15.01', '16',
+#     '17', '18', '18.5', '19', '19.56', '20', '21.68', '23', '24', '25', '40', '60'
+# ]
 
 
-_fornax_2022_masses = []
-for progenitor in _fornax_2022_progenitors:
-    try:
-        # Strip any non-numeric characters and convert to float
-        mass = float(progenitor.rstrip('ab'))
-        # print(mass)
-        _fornax_2022_masses.append(mass * u.Msun)
-    except ValueError:
-        # Handle cases like '9a' or '9b' as needed
-        pass
+# _fornax_2022_masses = []
+# for progenitor in _fornax_2022_progenitors:
+#     try:
+#         # Strip any non-numeric characters and convert to float
+#         mass = float(progenitor.rstrip('ab'))
+#         # print(mass)
+#         _fornax_2022_masses.append(mass * u.Msun)
+#     except ValueError:
+#         # Handle cases like '9a' or '9b' as needed
+#         pass
 
 
 
 
 # _fornax_2022_masses = [float(p.strip('.bh')) for p in _fornax_2022_progenitors] << u.Msun
 
-@RegistryModel(progenitor_mass = _fornax_2022_masses)
-class Fornax_2022(loaders.Fornax_2022):
-    """Model based on 2D simulations of 100 progenitors from Tianshu Wang, David Vartanyan, Adam Burrows, and Matthew S.B. Coleman, MNRAS 517:543, 2022.
-       Data available at https://www.astro.princeton.edu/~burrows/nu-emissions.2d.large/
-        """
-    #a mapping of mass to the progenitor
-    print("We get this far in Fornax_2022")
-    _mass_to_progenitor = dict(zip(_fornax_2022_masses,_fornax_2022_progenitors))
+# @RegistryModel(progenitor_mass = _fornax_2022_masses)
+# class Fornax_2022(loaders.Fornax_2022):
+#     """Model based on 2D simulations of 100 progenitors from Tianshu Wang, David Vartanyan, Adam Burrows, and Matthew S.B. Coleman, MNRAS 517:543, 2022.
+#        Data available at https://www.astro.princeton.edu/~burrows/nu-emissions.2d.large/
+#         """
+#     #a mapping of mass to the progenitor
+#     print("We get this far in Fornax_2022")
+#     _mass_to_progenitor = dict(zip(_fornax_2022_masses,_fornax_2022_progenitors))
 
 
-    def __init__(self, progenitor_mass:u.Quantity):
-        progenitor = self._mass_to_progenitor[progenitor_mass]
-        self.metadata['Black hole'] = progenitor.endswith('.bh')
-        filename = f'/home/aroberts/snewpy/models/SNEWPY_models/nu_vartanyan_2023/{progenitor}_strain_nu_64_128.txt' # For use instead of .h5 files
-        # filename = f'lum_spec_{progenitor}_dat.h5'
-        base_filename = os.path.basename(filename) # Extract just '{progenitor}_strain...' from filename
-        progenitor_mass, variant = self.extract_progenitor_mass(base_filename)
-        if progenitor_mass not in self._mass_to_progenitor:
-    	       raise ValueError(f"Invalid progenitor mass: {progenitor_mass}")
-        # Call the parent class initializer with the filename
-        super().__init__(filename, self.metadata)
+#     def __init__(self, progenitor_mass:u.Quantity):
+#         progenitor = self._mass_to_progenitor[progenitor_mass]
+#         self.metadata['Black hole'] = progenitor.endswith('.bh')
+#         filename = f'/home/aroberts/snewpy/models/SNEWPY_models/nu_vartanyan_2023/{progenitor}_strain_nu_64_128.txt' # For use instead of .h5 files
+#         # filename = f'lum_spec_{progenitor}_dat.h5'
+#         base_filename = os.path.basename(filename) # Extract just '{progenitor}_strain...' from filename
+#         progenitor_mass, variant = self.extract_progenitor_mass(base_filename)
+#         if progenitor_mass not in self._mass_to_progenitor:
+#     	       raise ValueError(f"Invalid progenitor mass: {progenitor_mass}")
+#         # Call the parent class initializer with the filename
+#         super().__init__(filename, self.metadata)
 
-        test_filename = "/home/aroberts/snewpy/models/SNEWPY_models/nu_vartanyan_2023/9.5_strain_nu_64_128.txt"
-        base_filename = os.path.basename(test_filename)
-        mass, variant = self.extract_progenitor_mass(base_filename)
-        print(f"Mass: {mass}, Variant: {variant}")
+#         test_filename = "/home/aroberts/snewpy/models/SNEWPY_models/nu_vartanyan_2023/9.5_strain_nu_64_128.txt"
+#         base_filename = os.path.basename(test_filename)
+#         mass, variant = self.extract_progenitor_mass(base_filename)
+#         print(f"Mass: {mass}, Variant: {variant}")
 
 
 
-    def extract_progenitor_mass(self, filename):
-        """Extract progenitor mass and optional variant from filename."""
-        match = re.search(r'(?<!\d)(\d+\.?\d*)([a-z]?)(?=\D|$)', filename)  # Match numbers and optional letters
-        if match:
-            mass = float(match.group(1)) * u.solMass  # Convert mass to astropy Quantity
-            variant = match.group(2) or None  # Optional: captures suffix like 'a', 'b', or None
-            return mass, variant
-        raise ValueError(f"Failed to extract progenitor mass and variant from filename: {filename}")
+#     def extract_progenitor_mass(self, filename):
+#         """Extract progenitor mass and optional variant from filename."""
+#         match = re.search(r'(?<!\d)(\d+\.?\d*)([a-z]?)(?=\D|$)', filename)  # Match numbers and optional letters
+#         if match:
+#             mass = float(match.group(1)) * u.solMass  # Convert mass to astropy Quantity
+#             variant = match.group(2) or None  # Optional: captures suffix like 'a', 'b', or None
+#             return mass, variant
+#         raise ValueError(f"Failed to extract progenitor mass and variant from filename: {filename}")
 
-        return super().__init__(filename, self.metadata)
+#         return super().__init__(filename, self.metadata)
 
 
 
