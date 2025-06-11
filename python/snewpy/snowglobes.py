@@ -141,7 +141,7 @@ def generate_fluence(model_path, model_type, transformation_type, d, output_file
 
     # Current line in your snewpy/snowglobes.py:
     snmodel = model_class(model_path, **snmodel_dict)
-    print(f"SNEWPY INFO: For model_type '{model_type}', using data file: {getattr(snmodel, 'filename', 'N/A')} (Loader: {getattr(snmodel, '_loader', {}).get('filename', 'N/A')})") # Try to get filename
+    print(f"INFO: SNEWPY is using supernova model file: {getattr(snmodel, 'filename', 'N/A')}")
 
     # # PROPOSED CHANGE:
     # if snmodel_dict: # If specific model parameters are provided in snmodel_dict
